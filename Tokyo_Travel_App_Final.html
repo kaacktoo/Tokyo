@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#C0392B">
+<title>도쿄 여행앱</title>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<style>
+html,body{margin:0;padding:0;background:#FAF9F6;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo',sans-serif;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+.app-tools{position:fixed;right:12px;bottom:12px;z-index:9999;display:flex;gap:8px;flex-wrap:wrap;max-width:240px}
+.app-tools button{border:none;border-radius:999px;padding:10px 12px;font-size:12px;background:#111;color:#fff}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<div class="app-tools">
+<button onclick="exportData()">백업</button>
+<button onclick="importData()">복원</button>
+<button onclick="resetData()">초기화</button>
+</div>
+
+<input type="file" id="restoreFile" style="display:none">
+
+<script>
+function exportData(){
+ const data={};
+ for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);data[k]=localStorage.getItem(k);}
+ const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+ const a=document.createElement('a');
+ a.href=URL.createObjectURL(blob);
+ a.download='tokyo-guide-backup.json';
+ a.click();
+}
+
+function importData(){
+ document.getElementById('restoreFile').click();
+}
+
+document.getElementById('restoreFile').addEventListener('change', async (e)=>{
+ const file=e.target.files[0];
+ if(!file) return;
+ const txt=await file.text();
+ const data=JSON.parse(txt);
+ Object.entries(data).forEach(([k,v])=>localStorage.setItem(k,v));
+ alert('복원 완료. 새로고침합니다.');
+ location.reload();
+});
+
+function resetData(){
+ if(confirm('모든 체크리스트 데이터를 삭제할까요?')){
+   localStorage.clear();
+   location.reload();
+ }
+}
+</script>
+
+<script type="text/babel">
+const {useState,useEffect} = React;
+
+
+const COLORS = {
+  red: "#C0392B", red2: "#E74C3C", redBg: "#FDECEA",
+  gold: "#C9952A", goldBg: "#FDF8EC",
+  teal: "#0D7377", tealBg: "#E6F4F4",
+  green: "#27AE60", greenBg: "#EAFAF1",
+  ink: "#1A1A1A", ink2: "#3D3D3D", ink3: "#6B6B6B",
+  paper: "#FAF9F6", border: "#E5E2DA",
+};
+
+// ── tiny style helpers ──
+const card = { background: "#fff", border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: "11px 13px", marginBottom: 9 };
+const subTitle = { fontSize: 13, fontWeight: 700, paddingLeft: 10, borderLeft: `3px solid ${COLORS.red}`, margin: "22px 0 10px", color: COLORS.ink };
+const Alert = ({ type, children }) => {
+  const map = { red: [COLORS.redBg, "#f5c6c6", "#8B1A1A"], gold: [COLORS.goldBg, "#edd97a", "#7A5600"], teal: [COLORS.tealBg, "#a8d5d5", "#0A4A4A"], green: [COLORS.greenBg, "#a8d5b8", "#1A4A2E"] };
+  const [bg, border, color] = map[type];
+  return <div style={{ borderRadius: 10, padding: "13px 15px", fontSize: 12.5, lineHeight: 1.7, marginBottom: 16, border: `0.5px solid ${border}`, background: bg, color }}>{children}</div>;
+};
+const Badge = ({ variant, children }) => {
+  const map = { r: [COLORS.redBg, COLORS.red], g: [COLORS.goldBg, COLORS.gold], ok: [COLORS.greenBg, COLORS.green] };
+  const [bg, color] = map[variant] || map.r;
+  return <span style={{ display: "inline-block", fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 100, background: bg, color, flexShrink: 0 }}>{children}</span>;
+};
+
+// ══════════════════════
+//  SECTION: 짐 체크리스트
+// ══════════════════════
+const packingData = [
+  { category: "📄 필수 서류", items: [
+    { name: "여권", note: "유효기간 6개월 이상 확인!" },
+    { name: "항공권 e-티켓", note: "화면 캡처 or 출력본 보관" },
+    { name: "숙소 예약 확인서", note: "소테츠 프레사 인 긴자 예약번호" },
+    { name: "여행자보험 증서", note: "보험사 긴급연락처도 저장!" },
+    { name: "여권 사본 (폰 사진)", note: "분실 시 대사관 재발급 필요" },
+  ]},
+  { category: "🔌 전자기기", items: [
+    { name: "스마트폰 + 충전기", note: "Apple Watch 충전기도!" },
+    { name: "보조배터리", note: "하루 종일 걷고 지도·번역 쓰면 금방 닳아요" },
+    { name: "멀티탭 (2구 이상)", note: "호텔 콘센트 적을 때 유용" },
+    { name: "이어폰", note: "지하철 이동 시간 길어요" },
+    { name: "WiFi / 유심 / eSIM", note: "출발 전 개통 or 공항 수령 예약 확인" },
+  ]},
+  { category: "☔ 6월 장마 필수템", items: [
+    { name: "접이식 우산", note: "현지 편의점에서도 살 수 있지만 미리 챙기면 Good" },
+    { name: "속건 반팔 · 얇은 긴팔", note: "에어컨 강한 실내용 긴팔 1장 필수" },
+    { name: "미끄럼 방지 편한 신발", note: "비 젖은 도로에서 굽 높은 신발 위험해요" },
+    { name: "방수 파우치 or 방수백", note: "스마트폰·지갑 비 맞을 때 보호용" },
+    { name: "쿨링 스프레이 / 땀 패드", note: "현지에서 사도 되지만 출발 당일 미리 가방에!" },
+  ]},
+  { category: "🧴 세면 · 건강", items: [
+    { name: "선크림 SPF50+", note: "장마철에도 자외선 강해요" },
+    { name: "두통약 · 소화제", note: "일본 현지 의약품은 글자 못 읽으면 불편" },
+    { name: "모기 기피제", note: "장마철 모기 많아요. 일본 현지에서도 구매 가능" },
+    { name: "개인 세면도구", note: "호텔 제공이지만 본인 것 쓰는 게 편하면 챙기기" },
+    { name: "마스크", note: "일본은 아직 대중교통·실내 마스크 쓰는 사람 많음" },
+  ]},
+  { category: "💴 쇼핑 준비", items: [
+    { name: "에코백 / 접이식 가방", note: "쇼핑 후 짐 넘칠 때 필수. 일본 봉투는 유료!" },
+    { name: "신용카드 (해외 결제용)", note: "트래블로그·하나은행 트래블카드 수수료 없음" },
+    { name: "Apple Watch 스이카 세팅", note: "출발 전 앱에서 미리 세팅해두면 편해요" },
+    { name: "현금 환전 (¥50,000)", note: "출발 1–2일 전 은행 앱 예약 → 공항 수령" },
+  ]},
+];
+
+function PackingSection() {
+  const allItems = packingData.flatMap((g, gi) => g.items.map((item, ii) => `${gi}_${ii}`));
+  const [checked, setChecked] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("packing_v2") || "{}"); } catch { return {}; }
+  });
+  const toggle = (key) => {
+    const next = { ...checked, [key]: !checked[key] };
+    setChecked(next);
+    try { localStorage.setItem("packing_v2", JSON.stringify(next)); } catch {}
+  };
+  const done = allItems.filter(k => checked[k]).length;
+  return (
+    <div>
+      <Alert type="red"><b>⛔ 이것만은 절대 빠뜨리면 안 돼요</b><br />여권 유효기간 6개월 이상 남아있는지 꼭 확인! 여권 사진 페이지는 폰에 사진으로도 저장해두세요.</Alert>
+      {packingData.map((group, gi) => (
+        <div key={gi}>
+          <div style={subTitle}>{group.category}</div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, marginBottom: 14 }}>
+            <thead><tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+              <th style={{ textAlign: "left", fontSize: 10, fontWeight: 600, color: COLORS.ink3, letterSpacing: ".07em", textTransform: "uppercase", padding: "8px 10px" }}>항목</th>
+              <th style={{ textAlign: "left", fontSize: 10, fontWeight: 600, color: COLORS.ink3, letterSpacing: ".07em", textTransform: "uppercase", padding: "8px 10px" }}>메모</th>
+              <th style={{ fontSize: 10, fontWeight: 600, color: COLORS.ink3, padding: "8px 10px" }}>✓</th>
+            </tr></thead>
+            <tbody>{group.items.map((item, ii) => {
+              const key = `${gi}_${ii}`;
+              const isChecked = !!checked[key];
+              return (
+                <tr key={ii} onClick={() => toggle(key)} style={{ cursor: "pointer", borderBottom: `0.5px solid ${COLORS.border}`, opacity: isChecked ? 0.4 : 1, background: isChecked ? "#f3f4f6" : "transparent", transition: ".2s" }}>
+                  <td style={{ padding: "9px 10px", fontWeight: 600, textDecoration: isChecked ? "line-through" : "none" }}>{item.name}</td>
+                  <td style={{ padding: "9px 10px", color: COLORS.ink3, lineHeight: 1.6 }}>{item.note}</td>
+                  <td style={{ padding: "9px 10px", textAlign: "center" }}>
+                    <input type="checkbox" readOnly checked={isChecked} style={{ width: 20, height: 20 }} />
+                  </td>
+                </tr>
+              );
+            })}</tbody>
+          </table>
+        </div>
+      ))}
+      <div style={{ background: COLORS.ink, color: "#fff", borderRadius: 10, padding: 15, display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14 }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,.6)" }}>체크 완료</div>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,.4)", marginTop: 2 }}>전체 {allItems.length}개 항목</div>
+        </div>
+        <div style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 700 }}>{done} / {allItems.length}</div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════
+//  SECTION: 일정
+// ══════════════════════
+const itinerary = [
+  { day: "DAY 1", title: "나리타 도착 → 긴자 정착", date: "6/18 수", red: true, items: [
+    { name: "나리타 T2 도착", time: "12:00", desc: "입국 심사·수하물 수령 약 30–60분. 바로 N'EX 타러 지하 1층으로 이동.", tag: "이동", tagType: "r", hl: true },
+    { name: "소테츠 프레사 인 긴자 체크인", time: "14:00–15:00", desc: "체크인은 15시부터. 일찍 도착하면 짐만 맡기고 가볍게 나가면 돼요.", tag: "숙소", tagType: "r", hl: true },
+    { name: "긴자 거리 산책 + 쇼핑", time: "15:30–19:00", desc: "긴자 식스(10:30–20:30), 마쓰야 긴자, 이토야(문구 성지), 유니클로 긴자 글로벌 플래그십. 비 와도 건물 간 실내 이동 가능!", tag: "쇼핑", tagType: "t", hl: false },
+    { name: "저녁: 마이센 긴자점 (돈카츠)", time: "19:00", desc: "미리 예약 권장! 히레카츠 세트 ¥2,500 전후. 예약 못 하면 19시 이전에 입장 도전.", tag: "식사 · 예약 추천", tagType: "g", hl: false },
+  ]},
+  { day: "DAY 2", title: "도쿄타워 + 롯폰기 + 이자카야", date: "6/19 목", red: false, items: [
+    { name: "아침: 편의점 모닝", time: "08:00", desc: "바로 옆 패밀리마트에서 오니기리 + 온가라아게 + 캔커피. 일본 편의점 감성 필수 체험!", tag: "식사", tagType: "g", hl: false },
+    { name: "도쿄타워", time: "09:30–11:30", desc: "숙소→아카바네바시역 도보 15분 or 지하철. 메인덱(150m) ¥1,200. 오전에 가면 비교적 한산! 날씨 좋으면 후지산도 보여요.", tag: "랜드마크", tagType: "r", hl: true },
+    { name: "점심: 아자부주반 로컬 라멘", time: "12:00", desc: "도쿄타워 근처 아자부주반 상점가. 부담없는 현지 식당들이 모여 있어요. ¥800–1,200.", tag: "식사", tagType: "g", hl: false },
+    { name: "롯폰기 힐즈 모리 미술관", time: "14:00–16:30", desc: "53층 현대미술관+전망대 ¥2,200. 온라인 선구매 추천. 비 와도 완벽. 화요일 17시 폐관 주의! (목요일은 22:00까지 open)", tag: "미술관", tagType: "r", hl: true },
+    { name: "롯폰기 힐즈 쇼핑", time: "17:00–18:30", desc: "츠타야 서점, 편집샵, 지하 슈퍼마켓에서 일본 과자·음료 쇼핑.", tag: "쇼핑", tagType: "t", hl: false },
+    { name: "저녁: 신바시 이자카야 + 생맥주", time: "19:00", desc: "숙소 도보 10분. 에비스·아사히 생맥주 ¥500~에 야키토리·에다마메 조합. 긴자 라이온 비어홀도 추천(1934년 오픈 클래식 맥주홀)!", tag: "식사·술", tagType: "g", hl: false },
+  ]},
+  { day: "DAY 3", title: "우에노 + 아사쿠사 + 스시", date: "6/20 금", red: false, items: [
+    { name: "도쿄 국립 서양미술관", time: "09:30–12:00", desc: "우에노 공원 내. 상설전 ¥500로 초저렴. 르코르뷔지에 설계 건물 자체가 유네스코 세계유산. 월요일 휴관(금요일은 20:00까지 open).", tag: "미술관", tagType: "r", hl: true },
+    { name: "점심: 우에노 아메요코 시장", time: "12:30", desc: "처마가 있어 비 와도 OK! 해산물 덮밥, 꼬치, 과일. ¥800–1,500. 저렴하고 활기넘쳐요.", tag: "식사", tagType: "g", hl: false },
+    { name: "아사쿠사 + 센소지 + 나카미세", time: "14:00–16:00", desc: "도쿄 최고의 절 + 나카미세 기념품 거리. 닌교야키(계란빵 모양 과자), 각종 기념품 쇼핑. 비 와도 처마 있는 곳이 많아요.", tag: "관광·쇼핑", tagType: "t", hl: false },
+    { name: "도쿄 스카이트리 (선택)", time: "16:30–18:00", desc: "아사쿠사에서 도보 15분. 높이 634m 세계 2위 전망탑. 천망갑판(350m) ¥2,100. 비 와도 실내라 완벽! 오후 4시 이후 줄이 짧아요.", tag: "전망대 · 선택", tagType: "r", hl: true },
+    { name: "저녁: 스시 (츠키지 근처)", time: "18:30", desc: "숙소 근처 츠키지 스시 세이 긴자점(예약 추천) 또는 스시로 긴자점(앱 예약 추천). 회전초밥 1접시 ¥110~부터!", tag: "식사 · 예약 추천", tagType: "g", hl: false },
+  ]},
+  { day: "DAY 4", title: "마지막 쇼핑 → 나리타 귀국", date: "6/21 토", red: true, items: [
+    { name: "체크아웃 + 짐 챙기기", time: "07:30", desc: "큰 캐리어 끌고 이동해야 하니 짐 미리 정리. 호텔 로비에 부탁하면 체크아웃 후에도 잠깐 짐 보관 가능.", tag: "출발 준비", tagType: "r", hl: true },
+    { name: "마지막 쇼핑 (짧게!)", time: "08:00–09:00", desc: "긴자 이토야 or 편의점. 과자·코스메·선물 마무리. 공항 면세점보다 시내가 대체로 저렴해요!", tag: "쇼핑", tagType: "t", hl: false },
+    { name: "신바시역 → N'EX → 나리타 T2", time: "09:30 출발", desc: "약 80분 소요. 나리타 도착 후 체크인·보안검색 여유있게. 귀국 당일 아침은 절대 느긋하게 굴면 안 돼요!", tag: "귀국", tagType: "r", hl: true },
+  ]},
+];
+
+const tagColors = { r: [COLORS.redBg, COLORS.red], g: [COLORS.goldBg, COLORS.gold], t: [COLORS.tealBg, COLORS.teal], gr: [COLORS.greenBg, COLORS.green] };
+
+function ItinerarySection() {
+  return (
+    <div>
+      <Alert type="gold"><b>☔ 6월 도쿄 날씨 주의</b><br />장마(梅雨) 시즌이에요. 기온 26–31℃, 습도 높고 소나기 자주 와요. 접이식 우산 필수! 실내 명소 위주로 동선을 짰어요.</Alert>
+      {itinerary.map((day, di) => (
+        <div key={di} style={{ marginBottom: 30 }}>
+          {day.day === "DAY 4" && (
+            <div style={{ background: COLORS.red, color: "#fff", padding: "11px 16px", fontSize: 12, fontWeight: 500, lineHeight: 1.6, borderRadius: 10, marginBottom: 16 }}>
+              <strong style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 2 }}>⏰ 귀국 시간 역산 — 이게 제일 중요해요!</strong>
+              13:30 나리타 출발 → 11:00 공항 체크인 → 신바시역 09:30 N'EX 탑승<br /><strong>→ 09:00 이전에 숙소 체크아웃 완료!</strong>
+            </div>
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <span style={{ padding: "4px 13px", borderRadius: 100, fontSize: 10, fontWeight: 700, letterSpacing: ".1em", color: "#fff", background: day.red ? COLORS.red : COLORS.ink }}>{day.day}</span>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>{day.title}</span>
+            <span style={{ fontSize: 11, color: COLORS.ink3, marginLeft: "auto" }}>{day.date}</span>
+          </div>
+          <div style={{ paddingLeft: 20, position: "relative" }}>
+            <div style={{ position: "absolute", left: 6, top: 8, bottom: 0, width: 1, background: COLORS.border }} />
+            {day.items.map((item, ii) => {
+              const [tBg, tColor] = tagColors[item.tagType] || tagColors.r;
+              const dotColor = item.hl ? COLORS.red : item.tagType === "g" ? COLORS.gold : item.tagType === "t" ? COLORS.teal : COLORS.border;
+              return (
+                <div key={ii} style={{ position: "relative", marginBottom: 13 }}>
+                  <div style={{ position: "absolute", left: -17, top: 7, width: 8, height: 8, borderRadius: "50%", background: dotColor, border: `2px solid ${COLORS.paper}` }} />
+                  <div style={{ background: "#fff", border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: "11px 13px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 3 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700 }}>{item.name}</span>
+                      <span style={{ fontSize: 10, fontFamily: "monospace", color: COLORS.ink3, flexShrink: 0, marginTop: 2 }}>{item.time}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: COLORS.ink3, lineHeight: 1.65 }}>{item.desc}</div>
+                    <span style={{ display: "inline-block", fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 100, marginTop: 5, background: tBg, color: tColor }}>{item.tag}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ══════════════════════
+//  SECTION: 일본어
+// ══════════════════════
+const phrases = [
+  { group: "👋 기본 인사 · 만능 표현", items: [
+    { kr: "감사합니다", jp: "ありがとう ございます", rr: "아리가토 고자이마스" },
+    { kr: "저기요! / 죄송합니다", jp: "すみません", rr: "스미마셍 — 직원 부를 때, 길 물을 때 모두 OK" },
+    { kr: "괜찮아요 / 됐어요", jp: "だいじょうぶ です", rr: "다이조부 데스 — 필요없다고 거절할 때도 씀" },
+    { kr: "잠깐만요", jp: "ちょっと まって ください", rr: "촛토 맛테 쿠다사이" },
+    { kr: "모르겠어요", jp: "わかりません", rr: "와카리마셍" },
+    { kr: "영어 할 수 있어요?", jp: "えいご は できますか？", rr: "에이고 와 데키마스카" },
+  ]},
+  { group: "🍽️ 식당에서", items: [
+    { kr: "2명이에요", jp: "ふたり です", rr: "후타리 데스 — 1명: 히토리, 3명: 산닌, 4명: 요닌" },
+    { kr: "이거 주세요 (메뉴 가리키며)", jp: "これ ください", rr: "코레 쿠다사이" },
+    { kr: "하나 더 주세요", jp: "もう ひとつ ください", rr: "모우 히토츠 쿠다사이" },
+    { kr: "맵지 않은 걸로요", jp: "からくない もの を ください", rr: "카라쿠나이 모노 오 쿠다사이" },
+    { kr: "계산해 주세요", jp: "おかいけい ください", rr: "오카이케이 쿠다사이" },
+    { kr: "따로따로 계산할게요", jp: "べつべつ に おねがいします", rr: "베츠베츠니 오네가이시마스 — 더치페이 할 때" },
+    { kr: "맛있어요!", jp: "おいしい！", rr: "오이시이 — 이거 하나면 주인이 너무 좋아해요 😊" },
+    { kr: "포장해 주세요 (테이크아웃)", jp: "もちかえり で おねがいします", rr: "모치카에리데 오네가이시마스" },
+  ]},
+  { group: "🛍️ 쇼핑 · 편의점", items: [
+    { kr: "봉투 필요 없어요", jp: "ふくろは いりません", rr: "후쿠로와 이리마셍" },
+    { kr: "카드로 계산할게요", jp: "カードで おねがいします", rr: "카도데 오네가이시마스" },
+    { kr: "면세 되나요? (10% 절약!)", jp: "めんぜい できますか？", rr: "멘제이 데키마스카" },
+    { kr: "다른 사이즈 있어요?", jp: "ほかの サイズ は ありますか？", rr: "호카노 사이즈 와 아리마스카" },
+    { kr: "입어봐도 되나요?", jp: "きても いいですか？", rr: "키테모 이이데스카" },
+    { kr: "영수증 주세요", jp: "レシート ください", rr: "레시토 쿠다사이 — 면세 신청할 때 필요해요" },
+  ]},
+  { group: "🚇 이동 · 길 찾기", items: [
+    { kr: "~역 어디예요?", jp: "〇〇えき は どこですか？", rr: "○○에키 와 도코 데스카" },
+    { kr: "이 전철 긴자역 가요?", jp: "この でんしゃ は ぎんざ に とまりますか？", rr: "코노 덴샤 와 긴자니 토마리마스카" },
+    { kr: "여기 가려면 어떻게 해요? (지도 보여주며)", jp: "ここ に いきたい のですが", rr: "코코니 이키타이 노데스가 — 지도 가리키면서 쓰면 OK" },
+    { kr: "화장실 어디예요?", jp: "トイレ は どこですか？", rr: "토이레 와 도코 데스카" },
+    { kr: "걸어서 얼마나 걸려요?", jp: "あるいて どのくらい かかりますか？", rr: "아루이테 도노쿠라이 카카리마스카" },
+  ]},
+  { group: "🏨 숙소에서", items: [
+    { kr: "체크인 할게요", jp: "チェックイン おねがいします", rr: "체크인 오네가이시마스" },
+    { kr: "짐 맡길 수 있어요?", jp: "にもつ を あずかって もらえますか？", rr: "니모츠 오 아즈캇테 모라에마스카" },
+    { kr: "WiFi 비밀번호 알려주세요", jp: "WiFi の パスワード を おしえて ください", rr: "와이파이노 파스와드 오 오시에테 쿠다사이" },
+    { kr: "수건 더 주세요", jp: "タオル を もっと ください", rr: "타오루 오 못토 쿠다사이" },
+  ]},
+  { group: "🆘 위기 탈출", items: [
+    { kr: "도와주세요!", jp: "たすけて ください！", rr: "타스케테 쿠다사이" },
+    { kr: "여권을 잃어버렸어요", jp: "パスポート を なくしました", rr: "파스포토 오 나쿠시마시타" },
+    { kr: "지갑을 잃어버렸어요", jp: "さいふ を なくしました", rr: "사이후 오 나쿠시마시타" },
+    { kr: "병원에 가고 싶어요", jp: "びょういん に いきたい です", rr: "뵤인니 이키타이 데스" },
+    { kr: "여기가 아파요 (몸 가리키며)", jp: "ここが いたい です", rr: "코코가 이타이 데스" },
+  ]},
+  { group: "🔢 숫자 · 가격 읽기", items: [
+    { kr: "100 / 200 / 300 / 500 / 1,000", jp: "百 / 二百 / 三百 / 五百 / 千", rr: "햐쿠 / 니햐쿠 / 산뱌쿠 / 고햐쿠 / 센" },
+    { kr: "2,000 / 3,000 / 5,000 / 10,000", jp: "二千 / 三千 / 五千 / 一万", rr: "니센 / 산젠 / 고센 / 이치만" },
+    { kr: "얼마예요?", jp: "いくら ですか？", rr: "이쿠라 데스카 — 손가락으로 가리키며 물어봐도 OK" },
+    { kr: "세금 포함 (실제 내는 금액)", jp: "税込 (ぜいこみ)", rr: "제이코미 — 가격표에서 이 숫자가 최종 금액!" },
+    { kr: "세금 제외 (표시만 저렴함)", jp: "税抜 (ぜいぬき)", rr: "제이누키 — 여기에 10% 더 붙어요. 속지 마세요!" },
+  ]},
+];
+
+function PhraseSection() {
+  return (
+    <div>
+      <Alert type="red"><b>🆘 긴급 번호</b><br />경찰 <b>110</b> · 구급차/화재 <b>119</b> · 주일 한국 대사관 <b>03-3452-7611</b></Alert>
+      {phrases.map((group, gi) => (
+        <div key={gi}>
+          <div style={subTitle}>{group.group}</div>
+          {group.items.map((p, pi) => (
+            <div key={pi} style={card}>
+              <div style={{ fontSize: 11, color: COLORS.ink3 }}>{p.kr}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, margin: "2px 0" }}>{p.jp}</div>
+              <div style={{ fontSize: 11, color: COLORS.ink3, fontStyle: "italic" }}>{p.rr}</div>
+            </div>
+          ))}
+        </div>
+      ))}
+      <Alert type="gold"><b>📱 Google 번역 카메라 기능 꿀팁</b><br />Google 번역 앱 켜고 카메라 모드로 메뉴판·간판 비추면 실시간 한국어 번역! 이거 하나면 일본어 몰라도 웬만한 건 다 해결돼요.</Alert>
+    </div>
+  );
+}
+
+// ══════════════════════
+//  SECTION: 쇼핑
+// ══════════════════════
+const shoppingGroups = [
+  { title: "✅ 강력 추천 (꼭 사기)", items: [
+    { name: "세잔느 모공 프라이머", price: 600, store: "마츠키요", note: "이 가격에 이 퀄리티는 진짜 없음" },
+    { name: "캔메이크 메탈룩 마스카라", price: 990, store: "돈키호테", note: "드럭스토어 마스카라 최고급" },
+    { name: "숏핀 파우더", price: 1800, store: "@cosme", note: "노메이크업 느낌 연출용 강추" },
+    { name: "미논 아미노", price: 1650, store: "마츠키요", note: "민감 피부에 진짜 좋음" },
+    { name: "비오레 바디시트", price: 1400, store: "돈키호테", note: "일본 여름 필수템" },
+    { name: "명란 마요", price: 600, store: "돈키호테", note: "계란밥 조합 최고" },
+    { name: "용각산 다이렉트", price: 800, store: "코쿠민", note: "목 아플 때 특효" },
+    { name: "맨소래담 립폼듀", price: 700, store: "마츠키요", note: "색 다양하고 일본 한정 많음" },
+    { name: "초록색 빨래비누 (우타마로)", price: 200, store: "돈키호테", note: "국민템 수준 빨래비누" },
+  ]},
+  { title: "🤔 추천하지만 조건 있음", items: [
+    { name: "마죠리카 마죠르카 마스카라 베이스", price: 1430, store: "@cosme", note: "예산 남으면 추천" },
+    { name: "아넷사 UV파우더", price: 2500, store: "돈키호테", note: "취향 따라 갈림" },
+    { name: "나키코 땀 억제 미스트", price: 2000, store: "드럭스토어", note: "여름 한정 강추" },
+    { name: "알비온 루즈 파우더 미스트", price: 2500, store: "@cosme", note: "메이크업 유지력 좋음" },
+    { name: "코세 메이크킵 미스트", price: 1650, store: "마츠키요", note: "고정력 좋음" },
+    { name: "데코르테 립 오드 뚜왈렛 15ml", price: 3000, store: "백화점", note: "향 진짜 좋음" },
+    { name: "몽벨 일본 텍크페이스 윈드 자켓", price: 20000, store: "몽벨 매장", note: "일본 본토 가격이 훨씬 저렴" },
+  ]},
+  { title: "💄 드럭스토어 뷰티", items: [
+    { name: "세잔느 눈밑 컨실러", price: 660, store: "마츠키요", note: "한국에서도 인기템" },
+    { name: "캔메이크 크림 치크", price: 660, store: "돈키호테", note: "블러셔 가성비 최고" },
+    { name: "디앤에이메이 아이섀도우 (D-UP)", price: 1200, store: "@cosme", note: "지속력 좋음" },
+    { name: "하다라보 고쿠준 로션", price: 800, store: "마츠키요", note: "히알루론산 보습 끝판왕" },
+    { name: "니베아 선크림 튜브", price: 700, store: "돈키호테", note: "일본판 성분이 더 좋다는 평 많음" },
+    { name: "하쿠미기 화장수", price: 500, store: "드럭스토어", note: "미백 화장수 가성비 좋음" },
+  ]},
+  { title: "💊 의약품 · 건강템", items: [
+    { name: "이브 A", price: 800, store: "코쿠민", note: "일본 국민 두통약" },
+    { name: "파브론 골드 A", price: 1500, store: "마츠키요", note: "일본 대표 감기약" },
+    { name: "키모니 눈약", price: 800, store: "드럭스토어", note: "눈 피로에 효과 좋음" },
+    { name: "무히 알파EX", price: 900, store: "코쿠민", note: "벌레물림 특효" },
+    { name: "코락쿠 정장약", price: 1000, store: "마츠키요", note: "여행 중 장트러블 대비" },
+    { name: "아스테리아 목캔디", price: 300, store: "편의점", note: "목 아플 때 먹기 좋고 맛도 괜찮음" },
+  ]},
+  { title: "🍙 식품 · 먹거리", items: [
+    { name: "킷캣 한정판 (말차/딸기)", price: 700, store: "돈키호테·공항", note: "한국에 없는 맛 가득. 선물용 최고" },
+    { name: "로이스 생초콜릿", price: 2000, store: "로이스 매장·공항", note: "냉장 보관 필요, 귀국 직전 구매 추천" },
+    { name: "도쿄 바나나", price: 800, store: "나리타공항·도쿄역", note: "도쿄 대표 기념품. 귀국 직전 공항에서 사기 딱 좋음" },
+    { name: "자가리코 (치즈·게맛)", price: 450, store: "편의점·돈키호테", note: "한국에도 있지만 일본 맛이 진짜. 치즈·게맛 추천" },
+    { name: "닛신 컵라면 시푸드 (노란 컵)", price: 600, store: "편의점", note: "일본 본토 맛이 국물 진하고 훨씬 맛있음" },
+  ]},
+];
+
+function ShoppingSection() {
+  const allKeys = shoppingGroups.flatMap((g, gi) => g.items.map((_, ii) => `${gi}_${ii}`));
+  const [checked, setChecked] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("shopping_v2") || "{}"); } catch { return {}; }
+  });
+  const toggle = (key) => {
+    const next = { ...checked, [key]: !checked[key] };
+    setChecked(next);
+    try { localStorage.setItem("shopping_v2", JSON.stringify(next)); } catch {}
+  };
+  const total = shoppingGroups.flatMap((g, gi) => g.items.map((item, ii) => checked[`${gi}_${ii}`] ? item.price : 0)).reduce((a, b) => a + b, 0);
+
+  return (
+    <div>
+      <Alert type="gold"><b>💡 쇼핑 팁</b><br />돈키호테·마츠모토키요시·코쿠민 드럭스토어 가격 비교 추천.<br />면세는 보통 ¥5,500 이상부터 가능!</Alert>
+      {shoppingGroups.map((group, gi) => (
+        <div key={gi}>
+          <div style={subTitle}>{group.title}</div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, marginBottom: 14 }}>
+            <thead><tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+              {["상품", "가격", "매장", "메모", "✓"].map(h => (
+                <th key={h} style={{ textAlign: "left", fontSize: 10, fontWeight: 600, color: COLORS.ink3, letterSpacing: ".07em", textTransform: "uppercase", padding: "8px 6px" }}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>{group.items.map((item, ii) => {
+              const key = `${gi}_${ii}`;
+              const isChecked = !!checked[key];
+              return (
+                <tr key={ii} onClick={() => toggle(key)} style={{ cursor: "pointer", borderBottom: `0.5px solid ${COLORS.border}`, opacity: isChecked ? 0.4 : 1, background: isChecked ? "#f3f4f6" : "transparent", transition: ".2s" }}>
+                  <td style={{ padding: "9px 6px", fontWeight: 600, textDecoration: isChecked ? "line-through" : "none", fontSize: 12 }}>{item.name}</td>
+                  <td style={{ padding: "9px 6px", color: COLORS.red, fontFamily: "monospace", fontWeight: 500, whiteSpace: "nowrap", fontSize: 12 }}>¥{item.price.toLocaleString()}</td>
+                  <td style={{ padding: "9px 6px", color: COLORS.teal, fontWeight: 700, fontSize: 11 }}>{item.store}</td>
+                  <td style={{ padding: "9px 6px", color: COLORS.ink3, lineHeight: 1.6, fontSize: 11 }}>{item.note}</td>
+                  <td style={{ padding: "9px 6px", textAlign: "center" }}><input type="checkbox" readOnly checked={isChecked} style={{ width: 18, height: 18 }} /></td>
+                </tr>
+              );
+            })}</tbody>
+          </table>
+        </div>
+      ))}
+      <div style={{ position: "sticky", bottom: 16, background: COLORS.ink, color: "#fff", padding: 16, borderRadius: 18, marginTop: 28, fontSize: 18, fontWeight: 800, textAlign: "center", boxShadow: "0 10px 30px rgba(0,0,0,.18)", zIndex: 99 }}>
+        현재 담은 금액 : ¥{total.toLocaleString()}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════
+//  SECTION: 맛집
+// ══════════════════════
+const foods = [
+  { emoji: "🥩", name: "마이센 긴자점", type: "돈카츠", spots: "긴자 미쓰코시 B2F · 예약 강추 · 줄 30–60분", price: "¥2,000–3,000" },
+  { emoji: "🍣", name: "스시로 긴자점", type: "회전초밥", spots: "긴자 · 앱 사전 순번 등록 추천", price: "1접시 ¥110~" },
+  { emoji: "🍣", name: "츠키지 스시 세이 긴자점", type: "스시", spots: "긴자 근처 · 런치는 여유 / 저녁은 예약 추천", price: "¥1,500–3,000" },
+  { emoji: "🍜", name: "아자부주반 로컬 라멘", type: "라멘", spots: "도쿄타워 근처 · 현지 분위기 가득", price: "¥800–1,200" },
+  { emoji: "🍺", name: "긴자 라이온 비어홀", type: "이자카야·맥주", spots: "신바시 · 1934년 오픈 클래식 분위기", price: "생맥주 ¥500~" },
+  { emoji: "🐟", name: "우에노 아메요코 시장", type: "시장 먹거리", spots: "우에노 · 처마 있어 비와도 OK! 해산물 덮밥·꼬치", price: "¥800–1,500" },
+  { emoji: "🍡", name: "아사쿠사 나카미세", type: "길거리 간식", spots: "아사쿠사 · 닌교야키·멜론빵 등 기념품 거리", price: "¥200~" },
+  { emoji: "🏪", name: "패밀리마트 (숙소 옆)", type: "편의점 모닝", spots: "숙소 바로 옆 · 오니기리+온가라아게+캔커피", price: "¥300~500" },
+];
+
+function FoodSection() {
+  return (
+    <div>
+      <Alert type="gold"><b>💡 예약 꿀팁</b><br />마이센·스시는 미리 예약하면 줄 없이 바로 입장! tabelog.com 영어 페이지 또는 앱 활용.</Alert>
+      {foods.map((f, i) => (
+        <div key={i} style={{ background: "#fff", border: `0.5px solid ${COLORS.border}`, borderRadius: 12, padding: 14, marginBottom: 13, display: "flex", gap: 13 }}>
+          <div style={{ fontSize: 30, flexShrink: 0, lineHeight: 1.1 }}>{f.emoji}</div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>{f.name}</div>
+            <div style={{ fontSize: 11, color: COLORS.teal, fontWeight: 600, marginBottom: 3 }}>{f.type}</div>
+            <div style={{ fontSize: 12, color: COLORS.ink3, lineHeight: 1.7 }}>{f.spots}</div>
+            <div style={{ fontSize: 12, color: COLORS.gold, fontFamily: "monospace", fontWeight: 500, marginTop: 5 }}>{f.price}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ══════════════════════
+//  SECTION: 스이카
+// ══════════════════════
+function SuicaSection() {
+  return (
+    <div>
+      <Alert type="teal"><b>⌚ 애플 워치로 개찰구 통과!</b><br />스이카를 워치에 넣으면 iPhone 꺼낼 필요 없이 손목만 대면 돼요. 익스프레스 모드로 화면도 안 켜도 통과!</Alert>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11, marginBottom: 18 }}>
+        {[["¥5,000", "추천 충전액", "3박4일 교통비로 충분"], ["무수수료", "충전 방법", "iPhone 지갑 앱 → 비자·마스터"]].map(([val, label, note], i) => (
+          <div key={i} style={{ background: "#fff", border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: 13 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: COLORS.ink3, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace" }}>{val}</div>
+            <div style={{ fontSize: 11, color: COLORS.ink3, marginTop: 4, lineHeight: 1.5 }}>{note}</div>
+          </div>
+        ))}
+      </div>
+      <div style={subTitle}>애플 워치에 스이카 넣는 법</div>
+      {[
+        ["지금 당장! 한국에서 미리 만들기", "iPhone 지갑(Wallet) 앱 → 우측 상단 + → 교통카드 → Suica 선택. 한국 iPhone에서 가능!"],
+        ["금액 충전", "¥5,000 선택 → 해외 결제 가능한 비자·마스터 카드로 충전. 수수료 없어요."],
+        ["Apple Watch로 이동", "iPhone 지갑 앱 → 스이카 선택 → ··· → Apple Watch에 추가. 워치에서 직접 사용하면 iPhone 꺼낼 필요 없어요!"],
+        ["개찰구 사용법", "사이드 버튼 두 번 → 익스프레스 모드 ON → 개찰구 IC 마크에 워치 대기. 화면 안 켜도 돼요!"],
+        ["잔액 부족 시", "역 내 초록색 충전기(チャージ) 또는 iPhone 지갑 앱에서 바로 충전. 편의점 계산대에서도 가능!"],
+      ].map(([title, desc], i) => (
+        <div key={i} style={{ display: "flex", gap: 13, alignItems: "flex-start", marginBottom: 13 }}>
+          <div style={{ flexShrink: 0, width: 27, height: 27, borderRadius: "50%", background: COLORS.red, color: "#fff", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>{title}</div>
+            <div style={{ fontSize: 12, color: COLORS.ink3, lineHeight: 1.65 }}>{desc}</div>
+          </div>
+        </div>
+      ))}
+      <Alert type="gold"><b>💡 N'EX는 스이카만으로 안 돼요!</b><br />나리타 ↔ 긴자 N'EX는 "특급권"이 별도라 스이카만으론 부족. 나리타 JR 매표소에서 별도 구매(¥3,070) 필요. 시내 지하철은 전부 스이카 OK!</Alert>
+    </div>
+  );
+}
+
+// ══════════════════════
+//  SECTION: 예약
+// ══════════════════════
+const reservations = [
+  { icon: "🥩", name: "마이센 긴자점 (돈카츠)", cat: "긴자 · 미쓰코시 B2F", badge: "g", badgeText: "추천 예약", desc: "런치 타임 30–60분 줄 기본. tabelog.com 또는 mai-sen.com에서 예약. 예약 안 되면 오픈 직전 11:20에 가는 게 최선!" },
+  { icon: "🍣", name: "스시로 긴자점 (회전초밥)", cat: "긴자 · 회전초밥", badge: "g", badgeText: "앱 예약 추천", desc: "예약 없이 가면 줄이 길어요. 스시로 공식 앱에서 사전 순번 등록하면 기다리지 않고 입장." },
+  { icon: "🍣", name: "츠키지 스시 세이 긴자점", cat: "긴자 근처 · 스시", badge: "g", badgeText: "저녁이면 예약", desc: "런치는 여유롭지만 저녁은 만석 잦아요. tabelog.com 영어 페이지에서 예약 가능." },
+  { icon: "🗼", name: "도쿄타워", cat: "미나토구 · 랜드마크", badge: "ok", badgeText: "예약 불필요", desc: "당일 현장 구매 OK. 오전 9–10시 가면 한산해요. ¥1,200 현금 또는 카드." },
+  { icon: "🖼️", name: "도쿄 국립 서양미술관", cat: "우에노 · 미술관", badge: "ok", badgeText: "예약 불필요", desc: "상설전 ¥500. 당일 구매 OK. 단 6월 특별전 열릴 경우 온라인 예약 편할 수 있으니 출발 전 nmwa.go.jp 확인. ⚠️ 월요일 휴관!" },
+  { icon: "🏙️", name: "롯폰기 힐즈 모리 미술관", cat: "롯폰기 · 현대미술+전망대", badge: "g", badgeText: "온라인 선구매 추천", desc: "mori.art.museum 영어 사이트에서 구매하면 줄 없이 바로 입장. ¥2,200. 화요일 17시 폐관 주의!" },
+  { icon: "🍺", name: "이자카야 (신바시 일대)", cat: "신바시 · 이자카야", badge: "ok", badgeText: "예약 불필요", desc: "체인 이자카야는 당일 OK. 6/20(금) 저녁은 일본 직장인들로 붐비니 18시 이전 입장 추천!" },
+];
+
+function ReservationSection() {
+  return (
+    <div>
+      <Alert type="teal"><b>💡 예약의 기술</b><br />미리 예약하면 줄 서는 시간을 아낄 수 있어요!</Alert>
+      {reservations.map((r, i) => (
+        <div key={i} style={{ background: "#fff", border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: "13px 15px", marginBottom: 11 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 6 }}>
+            <div style={{ fontSize: 20, flexShrink: 0, lineHeight: 1.3 }}>{r.icon}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>{r.name}</div>
+              <div style={{ fontSize: 11, color: COLORS.ink3 }}>{r.cat}</div>
+            </div>
+            <Badge variant={r.badge}>{r.badgeText}</Badge>
+          </div>
+          <div style={{ fontSize: 12, color: COLORS.ink3, lineHeight: 1.65 }}>{r.desc}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ══════════════════════
+//  MAIN APP
+// ══════════════════════
+const tabs = [
+  { id: "packing", label: "🎒 짐 체크" },
+  { id: "itinerary", label: "📅 일정" },
+  { id: "phrase", label: "🗣️ 일본어" },
+  { id: "shopping", label: "🛍️ 쇼핑" },
+  { id: "food", label: "🍱 맛집" },
+  { id: "suica", label: "⌚ 스이카" },
+  { id: "reservation", label: "📋 예약" },
+];
+
+const sectionTitles = {
+  packing: { title: "🎒 출발 전 짐 체크리스트", desc: "6월 장마 시즌 기준으로 챙겨야 할 것들. 체크하면서 확인해요!" },
+  itinerary: { title: "3박 4일 완벽 일정", desc: "6월 장마 시즌 기준, 실내·근거리 위주로 구성했어요. 하루에 한 지역씩 묶어 이동 최소화!" },
+  phrase: { title: "생존 일본어 완전판", desc: "이것만 알아도 밥 먹고, 쇼핑하고, 길 찾고, 위기 탈출까지 가능해요!" },
+  shopping: { title: "🛍️ 일본 쇼핑리스트", desc: "일본 가면 꼭 사오는 유명템 정리. 체크하면서 쇼핑 가능!" },
+  food: { title: "🍱 추천 맛집", desc: "긴자·도쿄타워·우에노·아사쿠사 근처 먹거리 총정리!" },
+  suica: { title: "⌚ 스이카 완전 가이드", desc: "iPhone 지갑 앱으로 한국에서 미리 만들고, Apple Watch로 편하게!" },
+  reservation: { title: "📋 예약 필요 여부 정리", desc: "미리 예약하면 줄 서는 시간을 아낄 수 있어요!" },
+};
+
+function App() {
+  const [activeTab, setActiveTab] = useState("packing");
+
+  return (
+    <div style={{ fontFamily: "'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif", background: COLORS.paper, color: COLORS.ink, fontSize: 14, lineHeight: 1.75, minHeight: "100vh" }}>
+      {/* HERO */}
+      <div style={{ background: COLORS.ink, color: "#fff", padding: "44px 24px 40px", position: "relative", overflow: "hidden", minHeight: 200, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#1A1A1A 60%,#2C1810 100%)" }} />
+        <div style={{ position: "absolute", right: -20, top: -30, fontSize: 180, fontWeight: 900, color: "rgba(255,255,255,0.04)", lineHeight: 1, pointerEvents: "none", userSelect: "none" }}>東京</div>
+        <div style={{ position: "relative", zIndex: 1 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".22em", color: COLORS.red2, textTransform: "uppercase", marginBottom: 10 }}>나만을 위한 맞춤 여행 바이블</div>
+          <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.25, marginBottom: 6 }}>도쿄 <span style={{ color: COLORS.red2 }}>완전정복</span><br />3박 4일</div>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,.5)", marginBottom: 20 }}>소테츠 프레사 인 긴자 나나초메 · 6월 18–21일</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {["나리타 T2 → 긴자", "맛집·쇼핑 중심", "애플 워치 스이카"].map(t => (
+              <span key={t} style={{ background: "rgba(255,255,255,.08)", border: "0.5px solid rgba(255,255,255,.15)", borderRadius: 100, padding: "4px 13px", fontSize: 11, color: "rgba(255,255,255,.7)" }}>{t}</span>
+            ))}
+            <span style={{ background: "rgba(192,57,43,.25)", border: "0.5px solid rgba(192,57,43,.5)", borderRadius: 100, padding: "4px 13px", fontSize: 11, color: "#ff9b8e" }}>⚠️ 귀국 13:30 출발</span>
+          </div>
+        </div>
+      </div>
+
+      {/* NAV */}
+      <nav style={{ position: "sticky", top: 0, zIndex: 100, background: "#fff", borderBottom: `1px solid ${COLORS.border}`, display: "flex", overflowX: "auto", padding: "0 16px", gap: 0, scrollbarWidth: "none" }}>
+        {tabs.map(tab => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ flexShrink: 0, background: "none", border: "none", borderBottom: activeTab === tab.id ? `2px solid ${COLORS.red}` : "2px solid transparent", padding: "13px 14px 11px", fontSize: 12, fontWeight: 500, color: activeTab === tab.id ? COLORS.red : COLORS.ink3, cursor: "pointer", whiteSpace: "nowrap", transition: "all .2s" }}>
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      {/* CONTENT */}
+      <div style={{ padding: "24px 20px 80px", maxWidth: 600, margin: "0 auto" }}>
+        <div style={{ marginBottom: 22 }}>
+          <div style={{ fontFamily: "serif", fontSize: 21, fontWeight: 700, marginBottom: 4 }}>{sectionTitles[activeTab].title}</div>
+          <div style={{ fontSize: 13, color: COLORS.ink3, lineHeight: 1.65 }}>{sectionTitles[activeTab].desc}</div>
+        </div>
+        {activeTab === "packing" && <PackingSection />}
+        {activeTab === "itinerary" && <ItinerarySection />}
+        {activeTab === "phrase" && <PhraseSection />}
+        {activeTab === "shopping" && <ShoppingSection />}
+        {activeTab === "food" && <FoodSection />}
+        {activeTab === "suica" && <SuicaSection />}
+        {activeTab === "reservation" && <ReservationSection />}
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>
